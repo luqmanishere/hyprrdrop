@@ -1,6 +1,4 @@
-use std::path::PathBuf;
-
-use clap::{Args, Parser, Subcommand};
+use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(
@@ -91,6 +89,8 @@ pub enum DebugCommand {
     Clients,
     #[command(about = "Get the active client")]
     ActiveClient,
+    #[command(about = "List all binds")]
+    Binds,
     ExecActive {
         command: String,
     },

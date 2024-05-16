@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{bail, Context, Result};
 use clap::Parser;
 use hyprland::{
     data::{Binds, Client, Clients, Workspace, Workspaces},
@@ -9,23 +9,27 @@ use hyprland::{
     shared::{HyprData, HyprDataActive, HyprDataActiveOptional, HyprDataVec},
 };
 
-use crate::cli::{Cli, Commands, DebugCommand, RegisterCommand};
-
-/// all workspace names are prefixed by this
-const WORKSPACE_PREFIX: &str = "hyprrdrop";
+use crate::{
+    cli::{Cli, Commands, DebugCommand, RegisterCommand},
+    utils::{check_if_bound, prepend_workspace_prefix},
+};
 
 mod cli;
+mod utils;
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+    // TODO: logging for debug purposes
     match cli.command {
         Some(Commands::Register { register_command }) => {
             match register_command {
-                RegisterCommand::Command { name, command } => {
+                RegisterCommand::Command {
+                    name: _,
+                    command: _,
+                } => {
                     // TODO: allow registering a command into a workspace
-                    let workspace_name = prepend_workspace_prefix(&name);
 
-                    todo!()
+                    todo!("not implemented yet")
                     // Dispatch::call(DispatchType::Exec(command.as_str()))?;
                 }
                 RegisterCommand::Class { name, class } => {
@@ -60,32 +64,41 @@ fn main() -> Result<()> {
                     keybind,
                     force_keybind,
                 } => {
-                    let workspace_name = prepend_workspace_prefix(&name);
-                    // get the active client
-                    let client = Client::get_active()?.expect("an active window exists");
-
-                    Dispatch::call(DispatchType::MoveToWorkspaceSilent(
-                        WorkspaceIdentifierWithSpecial::Special(Some(&workspace_name)),
-                        Some(WindowIdentifier::Address(client.address)),
-                    ))?;
-                    println!(
-                        "moved client {} to workspace {workspace_name}",
-                        client.title
-                    );
-
+                    // check for keybind option, early abort if keybind exists and force not
+                    // specified
                     if let Some(keybind) = keybind {
-                        let (mods, key) = keybind.split_once(',').expect("correct pattern");
-                        // unbind whatever is set. quite destructive
-                        Keyword::set("unbind", format!("{},{}", mods, key))?;
-                        Keyword::set(
-                            "bind",
-                            format!("{},{},togglespecialworkspace,{}", mods, key, workspace_name),
-                        )?;
-                        println!("bound special workspace {workspace_name} to keybind {keybind}");
-                        // TODO: how to check keybinds
-                        todo!();
-                        check_bind(keybind)?;
+                        if check_if_bound(&keybind)? && !force_keybind {
+                            bail!(format!("Key {keybind} is bound. Use -f to override"));
+                        } else {
+                            let workspace_name = prepend_workspace_prefix(&name);
+                            // get the active client
+                            let client = Client::get_active()?.expect("an active window exists");
+
+                            Dispatch::call(DispatchType::MoveToWorkspaceSilent(
+                                WorkspaceIdentifierWithSpecial::Special(Some(&workspace_name)),
+                                Some(WindowIdentifier::Address(client.address)),
+                            ))?;
+                            println!(
+                                "moved client {} to workspace {workspace_name}",
+                                client.title
+                            );
+
+                            let (mods, key) = keybind.split_once(',').expect("correct pattern");
+                            // unbind whatever is set. quite destructive
+                            Keyword::set("unbind", format!("{},{}", mods, key))?;
+                            Keyword::set(
+                                "bind",
+                                format!(
+                                    "{},{},togglespecialworkspace,{}",
+                                    mods, key, workspace_name
+                                ),
+                            )?;
+                            println!(
+                                "bound special workspace {workspace_name} to keybind {keybind}"
+                            );
+                        }
                     }
+                    // TODO: support taking the name from stdin
                 }
             }
         }
@@ -132,6 +145,7 @@ fn main() -> Result<()> {
         }
 
         Some(Commands::Debug { command }) => match command {
+            // TODO: prettier print
             Some(DebugCommand::All) | None => {
                 list_all_workspaces()?;
                 list_all_clients()?;
@@ -146,6 +160,10 @@ fn main() -> Result<()> {
                 let active = Client::get_active()?;
                 println!("{active:#?}");
             }
+            Some(DebugCommand::Binds) => {
+                let binds = Binds::get()?;
+                println!("{binds:#?}");
+            }
             Some(DebugCommand::ExecActive { command: _ }) => {
                 todo!();
             }
@@ -154,11 +172,6 @@ fn main() -> Result<()> {
     }
 
     Ok(())
-}
-
-fn check_bind(keybind: String) -> Result<bool> {
-    let binds = Binds::get()?;
-    todo!()
 }
 
 fn list_all_workspaces() -> Result<()> {
@@ -172,8 +185,4 @@ fn list_all_clients() -> Result<()> {
     let clients = Clients::get()?.to_vec();
     println!("{clients:#?}");
     Ok(())
-}
-
-fn prepend_workspace_prefix(name: &str) -> String {
-    format!("{WORKSPACE_PREFIX}-{name}")
 }
