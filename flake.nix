@@ -39,12 +39,13 @@
         };
 
         nci = {
-          # relPath is empty to denote current dir
           projects.${crateName}.path = ./.;
 
           crates.${crateName} = {
             # export crate (packages and devshell) in flake outputs
             export = true;
+
+            drvConfig = {mkDerivation = {meta.mainProgram = "hyprrdrop";};};
           };
 
           toolchains = {
@@ -105,8 +106,12 @@
           ];
         };
 
-        # export the release package of the crate as default package
-        packages.default = crateOutputs.packages.release;
+        packages = {
+          # export the release package of the crate as default package
+          default = crateOutputs.packages.release;
+          hyprrdrop = crateOutputs.packages.release;
+          hyprrdrop-dev = crateOutputs.packages.dev;
+        };
 
         # export overlay using easyOverlays
         overlayAttrs = {
@@ -115,14 +120,11 @@
           inherit (inputs.rust-overlay.overlays) default;
           */
         };
-        packages.hyprrdrop = crateOutputs.packages.release;
-        packages.hyprrdrop-dev = crateOutputs.packages.dev;
       };
       flake = {
         homeManagerModules = {
-          # TODO: hm module
-          # hyprrdrop = import ./nix/hm-module.nix inputs.self;
-          # default = inputs.self.homeManagerModules.hyprrdrop;
+          hyprrdrop = import ./nix/hm-module.nix inputs.self;
+          default = inputs.self.homeManagerModules.hyprrdrop;
         };
       };
     };
