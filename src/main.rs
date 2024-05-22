@@ -66,22 +66,15 @@ fn main() -> Result<()> {
                 } => {
                     // check for keybind option, early abort if keybind exists and force not
                     // specified
+                    let workspace_name = prepend_workspace_prefix(&name);
+
+                    // INFO: there was an idiot here who forgot to do the register the workspace
+                    // without the keybind flag
                     if let Some(keybind) = keybind {
                         if check_if_bound(&keybind)? && !force_keybind {
                             bail!(format!("Key {keybind} is bound. Use -f to override"));
                         } else {
-                            let workspace_name = prepend_workspace_prefix(&name);
-                            // get the active client
-                            let client = Client::get_active()?.expect("an active window exists");
-
-                            Dispatch::call(DispatchType::MoveToWorkspaceSilent(
-                                WorkspaceIdentifierWithSpecial::Special(Some(&workspace_name)),
-                                Some(WindowIdentifier::Address(client.address)),
-                            ))?;
-                            println!(
-                                "moved client {} to workspace {workspace_name}",
-                                client.title
-                            );
+                            register_active(&workspace_name)?;
 
                             let (mods, key) = keybind.split_once(',').expect("correct pattern");
                             // unbind whatever is set. quite destructive
@@ -97,6 +90,8 @@ fn main() -> Result<()> {
                                 "bound special workspace {workspace_name} to keybind {keybind}"
                             );
                         }
+                    } else {
+                        register_active(&workspace_name)?;
                     }
                     // TODO: support taking the name from stdin
                 }
@@ -111,7 +106,7 @@ fn main() -> Result<()> {
                 // move the window to current workspace if not special
                 let sp_workspace = Workspaces::get()?
                     .into_iter()
-                    .find(|e| e.name == sp_workspace_name)
+                    .find(|e| e.name.contains(&sp_workspace_name))
                     .context(format!(
                         "finding special workplace with given name {sp_workspace_name}"
                     ))?;
@@ -138,10 +133,19 @@ fn main() -> Result<()> {
 
         Some(Commands::Toggle { name }) => {
             println!("got command toggle, with name: {name}");
-
-            Dispatch::call(DispatchType::ToggleSpecialWorkspace(Some(
-                prepend_workspace_prefix(name.as_str()),
-            )))?;
+            let workspace_name = prepend_workspace_prefix(&name);
+            match Workspaces::get()?
+                .into_iter()
+                .find(|s| s.name.contains(&workspace_name))
+            {
+                Some(_) => {
+                    Dispatch::call(DispatchType::ToggleSpecialWorkspace(Some(workspace_name)))?;
+                }
+                None => {
+                    eprintln!("No workspace with name {workspace_name} found.");
+                    std::process::exit(1)
+                }
+            }
         }
 
         Some(Commands::Debug { command }) => match command {
@@ -184,5 +188,21 @@ fn list_all_workspaces() -> Result<()> {
 fn list_all_clients() -> Result<()> {
     let clients = Clients::get()?.to_vec();
     println!("{clients:#?}");
+    Ok(())
+}
+
+/// Register the currently active client to the given special workspace name
+fn register_active(workspace_name: &str) -> Result<()> {
+    // get the active client
+    let client = Client::get_active()?.expect("an active window exists");
+
+    Dispatch::call(DispatchType::MoveToWorkspaceSilent(
+        WorkspaceIdentifierWithSpecial::Special(Some(workspace_name)),
+        Some(WindowIdentifier::Address(client.address)),
+    ))?;
+    println!(
+        "moved client {} to workspace {workspace_name}",
+        client.title
+    );
     Ok(())
 }
